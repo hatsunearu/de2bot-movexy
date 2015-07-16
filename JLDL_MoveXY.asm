@@ -1,5 +1,6 @@
-; BasicCodeWithLog.asm
+; JLDL_MoveXY.asm
 ; Created by Kevin Johnson
+; Modified by John Braatz, Laura Palmore, Don Gi Min, and Lovissa Winyoto
 ; (no copyright applied; edit freely, no attribution necessary)
 ; This program does basic initialization of the DE2Bot
 ; and includes subroutines for position logging.
@@ -72,45 +73,13 @@ Main: ; "Real" program starts here.
 	CALL   UARTClear   ; empty the UART receive FIFO of any old data
 	CALL   StartLog    ; enable the interrupt-based position logging
 	
-; The following code (ending at "Die") shows *one* possible solution to
-; the introductory exercise of making the robot move 4ft then turn right.
-; Since position logging was enabled above, the robot will send its
-; XPOS and YPOS to the server once per second.  View the logs at
-; http://powersof2.gatech.edu/2031/Project/robotlogs/
-GoForward:
-	LOAD   FMid
-	OUT    LVELCMD     ; Start moving forward
-	OUT    RVELCMD
-	IN     XPOS
-	SUB    TwoFeet     ; constant defined below
-	SUB    TwoFeet     ; could easily make a new "FourFeet" constant
-	JNEG   GoForward   ; Haven't reached 4ft yet, so keep moving
+	in switches ; @ set number of ticks to cover using switch
+	store DestR   
 
-	LOADI  0
-	OUT    LVELCMD     ; Stop the robot
-	OUT    RVELCMD
-	CALL   Wait1       ; Not required, but I want the robot to fully stop
-	CALL   Wait1       ;  before starting the turn.
+	call MoveXY
 	
-TurnR90:
-	LOAD   FSlow       ; I'll turn slowly, just to see what it's like
-	OUT    LVELCMD     ; Left wheel forward
-	LOAD   RSlow
-	OUT    RVELCMD     ; Right wheel backwards
-	; To ensure a reliable turn, I'll make sure the robot turns
-	;  if it's anywhere 90-0 or 359-270.
-	IN     THETA
-	SUB    Deg90
-	JNEG   TurnR90     ; 90-0: keep turning
-	SUB    Deg180
-	JPOS   TurnR90     ; 359-270: keep turning
-	; From here, I'll just let it fall in to the "Die" routine,
-	;  which also stops the position logging
 	
-	; ** Note that the above is NOT intended to be "the way" to
-	; do any of this.  In fact, it was terrible when you consider
-	; its [lack of] extendibility and ultimate [non-] usability.
-	
+
 Die:
 ; Sometimes it's useful to permanently stop execution.
 ; This will also catch the execution if it accidentally
@@ -125,6 +94,315 @@ Die:
 Forever:
 	JUMP   Forever     ; Do this forever.
 DEAD:      DW &HDEAD   ; Example of a "local variable"
+
+
+
+;***************************************************************
+;* Move XY Subroutines
+;***************************************************************
+
+; *****************************************************************************
+; ** MoveXY **
+; Precondition:  DestR (input param) contains distance to travel in a straight line
+; Postcondition: DE2Bot travels with specified PD control
+; *****************************************************************************
+MoveXY:
+	out RESETPOS ; reset odometry
+	
+ControlLoop:
+	out TIMER ; reset timer
+	
+UpdateErrors:
+	; left
+	in LPOS            ; |
+	store MotorTemp    ; |
+	load DestR         ; | 
+	sub MotorTemp      ; V Target - Position
+	store ErrorL       ; update left encoder error
+	
+	sub ErrorLPrev
+	store ErrorLDeriv  ; update derivative error
+	
+	load ErrorL
+	store ErrorLPrev   ; update previous error
+	; right
+	in RPOS            ; |
+	store MotorTemp    ; |
+	load DestR         ; | 
+	sub MotorTemp      ; V Target - Position
+	store ErrorR       ; update right encoder error
+	
+	sub ErrorRPrev
+	store ErrorRDeriv  ; update derivative error
+	
+	load ErrorR
+	store ErrorRPrev   ; update previous error
+
+KpL:
+	load ErrorL
+	store MSError
+	loadi Kp_m
+	call MultiplySanitize
+	store CorrectionL
+
+KdL:
+	load ErrorLDeriv
+	store MSError
+	loadi Kd_m
+	call MultiplySanitize
+	store CorrDerivL
+
+KpR:
+	load ErrorR
+	store MSError
+	loadi Kp_m
+	call MultiplySanitize
+	store CorrectionR
+	
+KdR:
+	load ErrorRDeriv
+	store MSError
+	loadi Kd_m
+	call MultiplySanitize
+	store CorrDerivR
+	
+	call AccumError
+	
+LoopWait:
+	in TIMER
+	addi -1 ; reset after 2 timer ticks
+	jneg LoopWait
+	jump ControlLoop
+	
+; *****************************************************************************
+; ** MultiplySanitize **
+; Precondition:  ACC has value to multiply (Kp or Kd)
+;                MSError (input param) contains error to be multiplied with
+; Postcondition: ACC has multiplied value, capped at 1 word
+; *****************************************************************************
+
+; input params
+MSError:
+	dw 0;
+
+MultiplySanitize:
+	store m16sA        ; |
+	load MSError       ; |
+	store m16sB        ; |
+	call Mult16s       ; V call multiplication 
+	
+	load mres16sH      ; Load high word
+	jzero Trivial     ; High word is 0x0000, means positive
+	sub FFFF
+	jzero Trivial     ; High word is 0xFFFF, means negative
+	jump NTrivial     ; High word is not trivial
+
+Trivial: ; write out trivial values that only occupy first word
+	load mres16sL
+	return
+ 
+NTrivial: ; High word is nontrivial
+	load mres16sH      
+	jpos SetToMax      ; |
+	jneg SetToMin      ; V set nontrivial values as the extreme
+	
+SetToMax: ; set to maximum value
+	load MaxPosVal
+	return
+
+SetToMin: ; set minimum value
+	load MaxNegVal
+	return
+	
+
+; constants
+MaxPosVal: 
+	dw &H7FFF
+MaxNegVal:
+	dw &H8000
+
+
+; *****************************************************************************
+; ** AccumError **
+; Precondition:  CorrectionL/R and CorrDerivL/R are populated
+; Postcondition: Correct motor value is written to motor
+; Requires:      MotorLimit
+; *****************************************************************************
+
+AccumError:
+	load CorrectionL
+	shift -15 ; get sign bit for left prop
+	store AccumErrorSign
+	load CorrDerivL
+	shift -15 ; get sign bit for left deriv
+	xor AccumErrorSign 
+	store AccumErrorSignFlag ; 0 if both sign bits are the same, red flag for overflow
+	
+AddL:
+	load CorrectionL
+	add CorrDerivL
+	store AccumErrorSum ; compute sum
+	load AccumErrorSignFlag
+	jzero ChkOverflowL ; jump if overflow is impossible
+	jump WriteOutL
+
+ChkOverflowL:
+	; overflow possible
+	load CorrectionL
+	jzero WriteOutL ; fringe case
+	load AccumErrorSum ; get sum
+	shift -15 ; get sign bit of sum
+	xor AccumErrorSign ; 0 if signs are the same, 1 = overflow
+	jzero WriteOutL ; no overflow
+	; overflow
+	load AccumErrorSign
+	jzero AEPosL
+	
+	load ZERO
+	sub MaxSpeed
+	store AccumErrorSum
+	
+AEPosL: ; overflow in positive direction
+	load MaxSpeed
+	store AccumErrorSum
+	jump WriteOutL
+	
+WriteOutL: ; write to motor
+	load AccumErrorSum
+	call MotorLimit
+	out LVELCMD
+
+;right motor
+	load CorrectionR
+	shift -15 ; get sign bit for left prop
+	store AccumErrorSign
+	load CorrDerivR
+	shift -15 ; get sign bit for left deriv
+	xor AccumErrorSign 
+	store AccumErrorSignFlag ; 0 if both sign bits are the same, red flag for overflow
+	
+AddR:
+	load CorrectionR
+	add CorrDerivR
+	store AccumErrorSum ; compute sum
+	load AccumErrorSignFlag
+	jzero ChkOverflowR ; jump if overflow is impossible
+	jump WriteOutR
+	
+ChkOverflowR:
+	; overflow possible
+	load CorrectionR
+	jzero WriteOutR ; fringe case
+	load AccumErrorSum ; get sum
+	shift -15 ; get sign bit of sum
+	xor AccumErrorSign ; 0 if signs are the same, 1 = overflow
+	jzero WriteOutR ; no overflow
+	; overflow
+	load AccumErrorSign
+	jzero AEPosR
+	load ZERO
+	sub MaxSpeed
+	store AccumErrorSum
+
+AEPosR: ; overflow in negative direction
+	load MaxSpeed
+	store AccumErrorSum
+	jump WriteOutR
+	
+WriteOutR: ; write to motor
+	load AccumErrorSum
+	call MotorLimit
+	out RVELCMD
+	return
+	
+; local variables
+AccumErrorSum:
+	dw 0
+AccumErrorSign:
+	dw 0
+AccumErrorSignFlag: ; flag if can be overflowed, 1 = no overflow possible
+	dw 0
+	
+; *****************************************************************************
+; ** MotorLimit **
+; Precondition:  ACC has value from 0x0 to 0xffff
+; Postcondition: ACC has value limited from -0d511 to 0d511
+; *****************************************************************************
+
+MotorLimit:
+	store MotorTemp ; save ACC value
+	call Abs
+	sub MaxSpeed
+	jpos OverLimit
+	load MotorTemp
+	return
+OverLimit:
+	load MotorTemp ; recall ACC
+	jpos LimitHigh ; check if original intended motor speed was positive
+	load ZERO
+	sub MaxSpeed ; motor speed negative, get negative max speed
+	return
+LimitHigh: ; motor speed positive, get positive max speed
+	load ZERO
+	add MaxSpeed
+	return
+
+;***************************************************************
+;* Move XY Variables / Constants
+;***************************************************************
+; input parameters
+DestX:
+DW 0
+DestY:
+DW 0
+
+; destination parameters
+DestR:
+DW 0
+
+; current error parameters
+ErrorL:
+DW 0
+ErrorR:
+DW 0
+
+; previous error parameters
+ErrorLPrev:
+DW 0
+ErrorRPrev:
+DW 0
+
+ErrorLDeriv:
+dw 0
+ErrorRDeriv:
+dw 0
+
+; current control parameters
+CorrectionL: ; correction resulting from prop term
+DW 0
+CorrectionR:
+DW 0
+; 
+CorrDerivL: ; correction resulting from deriv term
+dw 0
+CorrDerivR:
+dw 0
+
+; ** Constants
+
+; ** Kp : Proportional Control Constant
+Kp_m: EQU 4 ; multiply by this number
+
+; ** Kd : Derivative Control Constant
+Kd_m: EQU 16 ; 
+
+MotorTemp:
+	dw 0
+MaxSpeed:
+	dw 511
+FFFF:
+	dw &HFFFF
+
 
 	
 ;***************************************************************
@@ -308,7 +586,148 @@ StopLog:
 	OUT    CTIMER      ; reset configurable timer
 	CLI    &B0010      ; disable interrupt source 1 (timer)
 	RETURN
+	
+;*******************************************************************************
+; Mult16s:  16x16 -> 32-bit signed multiplication
+; Based on Booth's algorithm.
+; Written by Kevin Johnson.  No licence or copyright applied.
+; Warning: does not work with factor B = -32768 (most-negative number).
+; To use:
+; - Store factors in m16sA and m16sB.
+; - Call Mult16s
+; - Result is stored in mres16sH and mres16sL (high and low words).
+;*******************************************************************************
+Mult16s:
+	LOADI  0
+	STORE  m16sc        ; clear carry
+	STORE  mres16sH     ; clear result
+	LOADI  16           ; load 16 to counter
+Mult16s_loop:
+	STORE  mcnt16s      
+	LOAD   m16sc        ; check the carry (from previous iteration)
+	JZERO  Mult16s_noc  ; if no carry, move on
+	LOAD   mres16sH     ; if a carry, 
+	ADD    m16sA        ;  add multiplicand to result H
+	STORE  mres16sH
+Mult16s_noc: ; no carry
+	LOAD   m16sB
+	AND    One          ; check bit 0 of multiplier
+	STORE  m16sc        ; save as next carry
+	JZERO  Mult16s_sh   ; if no carry, move on to shift
+	LOAD   mres16sH     ; if bit 0 set,
+	SUB    m16sA        ;  subtract multiplicand from result H
+	STORE  mres16sH
+Mult16s_sh:
+	LOAD   m16sB
+	SHIFT  -1           ; shift result L >>1
+	AND    c7FFF        ; clear msb
+	STORE  m16sB
+	LOAD   mres16sH     ; load result H
+	SHIFT  15           ; move lsb to msb
+	OR     m16sB
+	STORE  m16sB        ; result L now includes carry out from H
+	LOAD   mres16sH
+	SHIFT  -1
+	STORE  mres16sH     ; shift result H >>1
+	LOAD   mcnt16s
+	ADDI   -1           ; check counter
+	JPOS   Mult16s_loop ; need to iterate 16 times
+	LOAD   m16sB
+	STORE  mres16sL     ; multiplier and result L shared a word
+	RETURN              ; Done
+c7FFF: DW &H7FFF
+m16sA: DW 0 ; multiplicand
+m16sB: DW 0 ; multipler
+m16sc: DW 0 ; carry
+mcnt16s: DW 0 ; counter
+mres16sL: DW 0 ; result low
+mres16sH: DW 0 ; result high
 
+;*******************************************************************************
+; Div16s:  16/16 -> 16 R16 signed division
+; Written by Kevin Johnson.  No licence or copyright applied.
+; Warning: results undefined if denominator = 0.
+; To use:
+; - Store numerator in d16sN and denominator in d16sD.
+; - Call Div16s
+; - Result is stored in dres16sQ and dres16sR (quotient and remainder).
+; Requires Abs subroutine
+;*******************************************************************************
+Div16s:
+	LOADI  0
+	STORE  dres16sR     ; clear remainder result
+	STORE  d16sC1       ; clear carry
+	LOAD   d16sN
+	XOR    d16sD
+	STORE  d16sS        ; sign determination = N XOR D
+	LOADI  17
+	STORE  d16sT        ; preload counter with 17 (16+1)
+	LOAD   d16sD
+	CALL   Abs          ; take absolute value of denominator
+	STORE  d16sD
+	LOAD   d16sN
+	CALL   Abs          ; take absolute value of numerator
+	STORE  d16sN
+Div16s_loop:
+	LOAD   d16sN
+	SHIFT  -15          ; get msb
+	AND    One          ; only msb (because shift is arithmetic)
+	STORE  d16sC2       ; store as carry
+	LOAD   d16sN
+	SHIFT  1            ; shift <<1
+	OR     d16sC1       ; with carry
+	STORE  d16sN
+	LOAD   d16sT
+	ADDI   -1           ; decrement counter
+	JZERO  Div16s_sign  ; if finished looping, finalize result
+	STORE  d16sT
+	LOAD   dres16sR
+	SHIFT  1            ; shift remainder
+	OR     d16sC2       ; with carry from other shift
+	SUB    d16sD        ; subtract denominator from remainder
+	JNEG   Div16s_add   ; if negative, need to add it back
+	STORE  dres16sR
+	LOADI  1
+	STORE  d16sC1       ; set carry
+	JUMP   Div16s_loop
+Div16s_add:
+	ADD    d16sD        ; add denominator back in
+	STORE  dres16sR
+	LOADI  0
+	STORE  d16sC1       ; clear carry
+	JUMP   Div16s_loop
+Div16s_sign:
+	LOAD   d16sN
+	STORE  dres16sQ     ; numerator was used to hold quotient result
+	LOAD   d16sS        ; check the sign indicator
+	JNEG   Div16s_neg
+	RETURN
+Div16s_neg:
+	LOAD   dres16sQ     ; need to negate the result
+	XOR    NegOne
+	ADDI   1
+	STORE  dres16sQ
+	RETURN	
+d16sN: DW 0 ; numerator
+d16sD: DW 0 ; denominator
+d16sS: DW 0 ; sign value
+d16sT: DW 0 ; temp counter
+d16sC1: DW 0 ; carry value
+d16sC2: DW 0 ; carry value
+dres16sQ: DW 0 ; quotient result
+dres16sR: DW 0 ; remainder result
+
+;*******************************************************************************
+; Abs: 2's complement absolute value
+; Returns abs(AC) in AC
+; Written by Kevin Johnson.  No licence or copyright applied.
+;*******************************************************************************
+Abs:
+	JPOS   Abs_r
+	XOR    NegOne       ; Flip all bits
+	ADDI   1            ; Add one (i.e. negate number)
+Abs_r:
+	RETURN
 
 ;***************************************************************
 ;* Variables
