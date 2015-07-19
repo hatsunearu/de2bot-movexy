@@ -1,6 +1,6 @@
 
 ;The variable and loop names are garbage, and I don't think this code handles the input of zero properly, but this is the gist
-;of the integer square root algorithm
+;of the integer square root algorithm. I don't even think SCASM would accept some of the names I have but I'll deal with that later
 
 
     LOAD    N
