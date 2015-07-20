@@ -70,6 +70,7 @@ WaitForUser:
 ;***************************************************************
 Main: ; "Real" program starts here.
 	OUT    RESETPOS    ; reset odometer in case wheels moved after programming
+	CALL   InputCoord  ; Input coordinate to the robot manually
 	CALL   UARTClear   ; empty the UART receive FIFO of any old data
 	CALL   StartLog    ; enable the interrupt-based position logging
 	
@@ -98,7 +99,49 @@ Forever:
 	JUMP   Forever     ; Do this forever.
 DEAD:      DW &HDEAD   ; Example of a "local variable"
 
+;***************************************************************
+;* Input Coordinate, store to "Input" variable
+;***************************************************************
+InputCoord:
+	LOAD	Seven		;
+	OUT		SSEG1		; SSEG1 = 7
+	OUT		SSEG2		; SSEG2 = 7
 
+WaitForSafety2:
+	; Wait for safety switch to be toggled
+	IN     XIO         ; XIO contains SAFETY signal
+	AND    Mask4       ; SAFETY signal is bit 4
+	JPOS   WaitForUser2 ; If ready, jump to wait for PB3
+	IN     TIMER       ; We'll use the timer value to
+	AND    Mask1       ;  blink LED17 as a reminder to toggle SW17
+	SHIFT  8           ; Shift over to LED17
+	OUT    XLEDS       ; LED17 blinks at 2.5Hz (10Hz/4)
+	JUMP   WaitForSafety2
+	
+WaitForUser2:
+	; Wait for user to press PB3
+	IN     TIMER       ; We'll blink the LEDs above PB3
+	AND    Mask1
+	SHIFT  3           ; Both LEDG6 and LEDG7
+	STORE  Temp        ; (overkill, but looks nice)
+	SHIFT  1
+	OR     Temp
+	OUT    XLEDS
+	IN     XIO         ; XIO contains KEYs
+	AND    Mask1       ; KEY2 mask (KEY0 is reset and can't be read)
+	JPOS   WaitForUser2 ; not ready (KEYs are active-low, hence JPOS)
+	LOAD   Zero
+	OUT    XLEDS       ; clear LEDs once ready to continue
+
+	LOAD   Six
+	OUT	   SSEG1		; SSEG1 = 6
+	OUT	   SSEG2		; SSEG2 = 6
+	
+	IN	   SWITCHES
+	STORE  Input
+	OUT	   SSEG1
+
+	RETURN
 
 ;***************************************************************
 ;* Move XY Subroutines
@@ -848,6 +891,7 @@ Abs_r:
 ;* Variables
 ;***************************************************************
 Temp:     DW 0 ; "Temp" is not a great name, but can be useful
+Input:	  DW 0 ; "Input" is the coordinate input from user
 
 ;***************************************************************
 ;* Constants
