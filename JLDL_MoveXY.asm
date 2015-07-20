@@ -119,8 +119,8 @@ WaitForSafety2:
 	JUMP   WaitForSafety2
 	
 WaitForUser2:
-	; Wait for user to press PB3
-	IN     TIMER       ; We'll blink the LEDs above PB3
+	; Wait for user to press PB2
+	IN     TIMER       ; We'll blink the LEDs above PB2
 	AND    Mask1
 	SHIFT  3           ; Both LEDG6 and LEDG7
 	STORE  Temp        ; (overkill, but looks nice)
@@ -133,14 +133,47 @@ WaitForUser2:
 	LOAD   Zero
 	OUT    XLEDS       ; clear LEDs once ready to continue
 
-	LOAD   Six
-	OUT	   SSEG1		; SSEG1 = 6
-	OUT	   SSEG2		; SSEG2 = 6
-	
 	IN	   SWITCHES
 	STORE  Input
-	OUT	   SSEG1
+	; get the absolute y value
+	AND	   LowNibl	   ; AC = y coordinate
+	STORE  y
 
+	; convert to 2's complement
+	LOAD   Input
+	AND	   Mask4
+	JZERO  skip
+	JNEG   skip
+	LOAD   Zero
+	SUB	   y
+	AND	   LowNibl
+	STORE  y
+
+skip:
+	; get the absolute x value
+	LOAD   Input
+	SHIFT  -5
+	AND	   LowNibl	   ; AC = x coordinate
+	STORE  x
+
+	; convert to 2's complement
+	LOAD   INPUT
+	SHIFT  -5
+	AND	   Mask4
+	JZERO  skip1
+	JNEG   skip1
+	LOAD   Zero
+	SUB	   x
+	AND	   LowNibl
+	STORE  x
+
+skip1:	
+;	print it out
+	LOAD   x
+	SHIFT  8
+	OR	   y
+	OUT	   SSEG1
+	
 	RETURN
 
 ;***************************************************************
@@ -892,6 +925,8 @@ Abs_r:
 ;***************************************************************
 Temp:     DW 0 ; "Temp" is not a great name, but can be useful
 Input:	  DW 0 ; "Input" is the coordinate input from user
+x:	  DW 0 ; x coordinate
+y:	  DW 0 ; y coordinate
 
 ;***************************************************************
 ;* Constants
