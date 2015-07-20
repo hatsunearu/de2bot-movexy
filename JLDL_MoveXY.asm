@@ -70,19 +70,37 @@ WaitForUser:
 ;***************************************************************
 Main: ; "Real" program starts here.
 	OUT    RESETPOS    ; reset odometer in case wheels moved after programming
-	CALL   InputCoord  ; Input coordinate to the robot manually
+	;CALL   InputCoord  ; Input coordinate to the robot manually
 	CALL   UARTClear   ; empty the UART receive FIFO of any old data
 	CALL   StartLog    ; enable the interrupt-based position logging
 	
-	;in switches ; @ set number of ticks to cover using switch
-	;store DestR   
-
-	;call MoveStraight
+	loadi 90
+	call Pivot
 	
-
-        loadi 50
-        call Pivot
+	load TwoFeet
+	store DestR
+	call MoveStraight
 	
+	loadi 180
+	call Pivot
+	
+	load TwoFeet
+	store DestR
+	call MoveStraight	
+	
+	loadi 270
+	call Pivot
+	
+	load TwoFeet
+	store DestR
+	call MoveStraight	
+	
+	loadi 0
+	call Pivot
+	
+	load TwoFeet
+	store DestR
+	call MoveStraight
 
 Die:
 ; Sometimes it's useful to permanently stop execution.
@@ -186,7 +204,14 @@ skip1:
 ; Postcondition: DE2Bot travels with specified PD control
 ; *****************************************************************************
 MoveStraight:
-	out RESETPOS ; reset odometry
+
+	in LPOS
+	add DestR
+	store DestLeft
+	
+	in RPOS
+	add DestR
+	store DestRight
 	
 ControlLoop:
 	out TIMER ; reset timer
@@ -195,7 +220,7 @@ UpdateErrors:
 	; left
 	in LPOS            ; |
 	store MotorTemp    ; |
-	load DestR         ; | 
+	load DestLeft         ; | 
 	sub MotorTemp      ; V Target - Position
 	store ErrorL       ; update left encoder error
 	
@@ -207,7 +232,7 @@ UpdateErrors:
 	; right
 	in RPOS            ; |
 	store MotorTemp    ; |
-	load DestR         ; | 
+	load DestRight     ; | 
 	sub MotorTemp      ; V Target - Position
 	store ErrorR       ; update right encoder error
 	
@@ -246,13 +271,28 @@ KdR:
 	store CorrDerivR
 
 LoopWait:
+    call AccumError
 	in TIMER
-        call AccumError
 	addi -1 ; reset after 2 timer ticks
 	jneg LoopWait
-	jump ControlLoop
 	
-        return ; done, return
+	load ErrorL
+	call ABS
+	addi -5
+	jpos ControlLoop
+	load ErrorR
+	call ABS
+	addi -5
+	jpos ControlLoop
+	call DeadCheck
+	jzero ControlLoop
+    return ; done, return
+	
+DestLeft:
+  dw 0
+  
+DestRight:
+  dw 0
 
 
 ; *****************************************************************************
@@ -262,43 +302,109 @@ LoopWait:
 ; *****************************************************************************
 Pivot:
 
+  call AngleSanitize
+  store ADTarget
+
 PivotControlLoop:
 
   out TIMER
-
-  call AngleSanitize
-  store ADTarget
+  
+  ; update errors
+  load PivotErrorDeriv2
+  store PivotErrorDeriv3
+  load PivotErrorDeriv1
+  store PivotErrorDeriv2
+  
   call AngularDifference
+  store PivotError   ; update pivot error
+  out sseg2
 
+  sub PivotErrorPrev
+  store PivotErrorDeriv1  ; update derivative error
+  
+  load PivotError
+  store PivotErrorPrev   ; update previous error
+  
+  ; calculate corrections
+  
+  load PivotError
   store MSError
   loadi Kp_r
   call MultiplySanitize
-  store CorrectionL
+  store CorrectionR
+  
+  load PivotErrorDeriv1
+  add PivotErrorDeriv2
+  add PivotErrorDeriv3
+  store MSError
+  in SWITCHES
+  call MultiplySanitize
+  store CorrDerivR
 
   load ZERO
-  sub CorrectionL
-  store CorrectionR
+  sub CorrectionR
+  store CorrectionL
+  
+  load ZERO
+  sub CorrDerivR
+  store CorrDerivL
+  
+  call AccumError
 
 LoopWaitPivot:
   in TIMER
-  call AccumError
   addi -1
-  jneg LoopWait
-  jump PivotControlLoop
-
+  jneg LoopWaitPivot
   
-  return ; done @fixme
+  load PivotError
+  jpos PivotControlLoop
+  jneg PivotControlLoop
+  call DeadCheck
+  jzero PivotControlLoop
+  return
 
-PivotTarget:
+PivotError:
   dw 0
-PivotCorrection:
+PivotErrorPrev:
   dw 0
+PivotErrorDeriv1:
+  dw 0
+PivotErrorDeriv2:
+  dw 0
+PivotErrorDeriv3:
+  dw 0
+  
+  
+; *****************************************************************************
+; ** DeadCheck **
+; Precondition:  None
+; Postcondition: ACC is zero if DE2Bot cannot stop instantly
+;                ACC is 1 if DE2Bot is safe to stop immediately (deadzoning)
+; *****************************************************************************
+ 
+DeadCheck:
+	in LVEL
+	call ABS
+	addi -40
+	jpos DCNotSafe
+	in RVEL
+	call ABS
+	addi -40
+	jpos DCNotSafe
+	loadi 1
+	return
+	
+DCNotSafe:
+    loadi 0
+	return
+  
+  
 ; *****************************************************************************
 ; ** AngleSanitize **
-; Precondition:  ACC has bearing of interest (in 0-359)
-; Postcondition: ACC has bearing of interest (in -179 - 180)
+; Precondition:  ACC has bearing of interest (in 0-359) (ccw+)
+; Postcondition: ACC has bearing of interest (in -179 - 180) (ccw+)
 ; *****************************************************************************
-AngleSantize:
+AngleSanitize:
   store ASTemp
   addi -180
   jpos ASNegative
@@ -306,9 +412,8 @@ AngleSantize:
   return
 
 ASNegative:
-  store ASTemp
-  load ZERO
-  sub ASTemp
+  load ASTemp
+  addi -360
   return
 
 ASTemp:
@@ -323,21 +428,21 @@ ASTemp:
 ; *****************************************************************************
 
 AngularDifference: 
-  load THETA
+  in THETA
   call AngleSanitize
   store ADTemp
 
   load ADTarget
   sub ADTemp
 
-  ; AC is now a ccw angle from current heading to target heading
+  ; AC is now a cw angle from current heading to target heading
   ; however, this may range from -360 to 360 degrees
   ; this should be optimized by switching heading direction if its
   ; beneficial to do so. the cutoff for efficiency is 180 degrees.
 
-  store ADTemp ; first store in ADTarget
+  store ADTemp ; first store raw tgt-curr in temp
   call ABS ; call absolute value...
-  subi -180
+  addi -180
   jpos ADOverAngle ; absolute angle is larger than 180, 
                    ; it's more beneficial to turn the other direction.
   load ADTemp      ; return the unmodified bearing
@@ -345,12 +450,12 @@ AngularDifference:
 
 ADOverAngle:
   load ADTemp
-  jpos ADOAPos ; positive over angle
+  jpos ADPos ; positive over angle
   ; negative over angle
   addi 360
   return
 
-ADOPos:
+ADPos:
   addi -360
   return
 
@@ -585,7 +690,10 @@ Kp_m: EQU 4 ; multiply by this number
 Kd_m: EQU 16 ;
 
 ; ** Angular prop control constant
-Kp_r: EQU 50  
+Kp_r: EQU 13
+
+Kd_r: EQU 10
+
 
 MotorTemp:
 	dw 0
