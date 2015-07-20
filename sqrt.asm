@@ -75,5 +75,11 @@ ItsZero:
 Counter:    DW  0
 Zero:       DW  0
 One:        DW  1
-
+N:			DW	16
+A:			DW	0
+B:			DW	0
+x:			DW	0
+y:			DW	0
+ceilnumbits/2:	DW	0
+floorn/x:	DW	0
 
