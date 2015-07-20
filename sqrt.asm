@@ -13,7 +13,7 @@ sqrt:
     LOAD    numbits
     AND     1
     ADD     B
-    STORE   ceilnumbits/2
+    STORE   ceilnumbits/2 ;ceilnumbits/2 is a varaible name that literally holds the value ceil(numbits(N)/2)
 
     ;calculate 2^ceil(numbits(N)/2)
     LOAD    One
@@ -39,7 +39,7 @@ Loop2:
     STORE   B
     LOAD    floorN/x
     SHIFT   &B1000000001
-    STORE   floorN/x
+    STORE   floorN/x        ;floorN/x is also a variable name that holds floor(N/x)
     LOAD    B
     JPOS    Loop2
 
