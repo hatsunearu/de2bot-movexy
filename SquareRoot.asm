@@ -1,4 +1,4 @@
-ORG        &H000       ;Begin program at x000
+ORG        &H005       ;Begin program at x000
 ; square root estimation. Given distances X and Y it estimates sqrt(x^2+y^2) and stores it in ANS
 SQUAREROOT:
 	;load x and check if x is negative
