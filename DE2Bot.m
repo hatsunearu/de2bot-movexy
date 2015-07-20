@@ -41,8 +41,8 @@ function [tt, LEncoder, REncoder, TargetEncoderVec, LVel, RVel, LError, RError] 
         RErrorDeriv(i) = RError(i) - RError(i-1);
         
         %Apply PID control
-        LVel(i+1) = LError(i) * Kp + LErrorIntegral(i) * Ki / tt(i) + LErrorDeriv(i) * Kd;
-        RVel(i+1) = RError(i) * Kp + RErrorIntegral(i) * Ki / tt(i) + RErrorDeriv(i) * Kd;
+        LVel(i+1) = LError(i) * Kp + LErrorIntegral(i) * Ki  + LErrorDeriv(i) * Kd;
+        RVel(i+1) = RError(i) * Kp + RErrorIntegral(i) * Ki  + RErrorDeriv(i) * Kd;
         
         %Acceleration limiting
         if LVel(i+1) - LVel(i) > Amax || LVel(i+1) - LVel(i) < -Amax

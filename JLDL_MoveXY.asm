@@ -17,7 +17,7 @@
 ; routine (ISR).  The first location is the reset vector, and
 ; should be a JUMP instruction to the beginning of your normal
 ; code.
-ORG        &H000       ; Jump table is located in mem 0-4
+ORG     &H000       ; Jump table is located in mem 0-4
 	JUMP   Init        ; Reset vector
 	RETI               ; Sonar interrupt (unused)
 	JUMP   CTimer_ISR  ; Timer interrupt
@@ -73,11 +73,14 @@ Main: ; "Real" program starts here.
 	CALL   UARTClear   ; empty the UART receive FIFO of any old data
 	CALL   StartLog    ; enable the interrupt-based position logging
 	
-	in switches ; @ set number of ticks to cover using switch
-	store DestR   
+	;in switches ; @ set number of ticks to cover using switch
+	;store DestR   
 
-	call MoveXY
+	;call MoveStraight
 	
+
+        loadi 50
+        call Pivot
 	
 
 Die:
@@ -102,11 +105,11 @@ DEAD:      DW &HDEAD   ; Example of a "local variable"
 ;***************************************************************
 
 ; *****************************************************************************
-; ** MoveXY **
+; ** MoveStraight **
 ; Precondition:  DestR (input param) contains distance to travel in a straight line
 ; Postcondition: DE2Bot travels with specified PD control
 ; *****************************************************************************
-MoveXY:
+MoveStraight:
 	out RESETPOS ; reset odometry
 	
 ControlLoop:
@@ -165,21 +168,130 @@ KdR:
 	loadi Kd_m
 	call MultiplySanitize
 	store CorrDerivR
-	
-	call AccumError
-	
+
 LoopWait:
 	in TIMER
+        call AccumError
 	addi -1 ; reset after 2 timer ticks
 	jneg LoopWait
 	jump ControlLoop
 	
+        return ; done, return
+
+
+; *****************************************************************************
+; ** Pivot **
+; Precondition:  ACC has bearing of interest (in 0-359)
+; Postcondition: DE2Bot pivots to desired bearing
+; *****************************************************************************
+Pivot:
+
+PivotControlLoop:
+
+  out TIMER
+
+  call AngleSanitize
+  store ADTarget
+  call AngularDifference
+
+  store MSError
+  loadi Kp_r
+  call MultiplySanitize
+  store CorrectionL
+
+  load ZERO
+  sub CorrectionL
+  store CorrectionR
+
+LoopWaitPivot:
+  in TIMER
+  call AccumError
+  addi -1
+  jneg LoopWait
+  jump PivotControlLoop
+
+  
+  return ; done @fixme
+
+PivotTarget:
+  dw 0
+PivotCorrection:
+  dw 0
+; *****************************************************************************
+; ** AngleSanitize **
+; Precondition:  ACC has bearing of interest (in 0-359)
+; Postcondition: ACC has bearing of interest (in -179 - 180)
+; *****************************************************************************
+AngleSantize:
+  store ASTemp
+  addi -180
+  jpos ASNegative
+  load ASTemp
+  return
+
+ASNegative:
+  store ASTemp
+  load ZERO
+  sub ASTemp
+  return
+
+ASTemp:
+  dw 0
+
+; *****************************************************************************
+; ** AngularDifference **
+; Precondition:  ADTarget (input param) has bearing of interest (in -179 - 180)
+; Postcondition: ACC has angular difference from current bearing to intended
+;                bearing (in -179 - 180)
+; Note: uses THETA
+; *****************************************************************************
+
+AngularDifference: 
+  load THETA
+  call AngleSanitize
+  store ADTemp
+
+  load ADTarget
+  sub ADTemp
+
+  ; AC is now a ccw angle from current heading to target heading
+  ; however, this may range from -360 to 360 degrees
+  ; this should be optimized by switching heading direction if its
+  ; beneficial to do so. the cutoff for efficiency is 180 degrees.
+
+  store ADTemp ; first store in ADTarget
+  call ABS ; call absolute value...
+  subi -180
+  jpos ADOverAngle ; absolute angle is larger than 180, 
+                   ; it's more beneficial to turn the other direction.
+  load ADTemp      ; return the unmodified bearing
+  return
+
+ADOverAngle:
+  load ADTemp
+  jpos ADOAPos ; positive over angle
+  ; negative over angle
+  addi 360
+  return
+
+ADOPos:
+  addi -360
+  return
+
+; input params
+ADTarget:
+  dw 0
+; temporary variables
+ADTemp:
+  dw 0
+
 ; *****************************************************************************
 ; ** MultiplySanitize **
 ; Precondition:  ACC has value to multiply (Kp or Kd)
 ;                MSError (input param) contains error to be multiplied with
 ; Postcondition: ACC has multiplied value, capped at 1 word
 ; *****************************************************************************
+
 
 ; input params
 MSError:
@@ -394,7 +506,10 @@ dw 0
 Kp_m: EQU 4 ; multiply by this number
 
 ; ** Kd : Derivative Control Constant
-Kd_m: EQU 16 ; 
+Kd_m: EQU 16 ;
+
+; ** Angular prop control constant
+Kp_r: EQU 50  
 
 MotorTemp:
 	dw 0
