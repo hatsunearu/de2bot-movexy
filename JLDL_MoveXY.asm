@@ -125,16 +125,6 @@ InputCoord:
 	OUT		SSEG1		; SSEG1 = 7
 	OUT		SSEG2		; SSEG2 = 7
 
-WaitForSafety2:
-	; Wait for safety switch to be toggled
-	IN     XIO         ; XIO contains SAFETY signal
-	AND    Mask4       ; SAFETY signal is bit 4
-	JPOS   WaitForUser2 ; If ready, jump to wait for PB3
-	IN     TIMER       ; We'll use the timer value to
-	AND    Mask1       ;  blink LED17 as a reminder to toggle SW17
-	SHIFT  8           ; Shift over to LED17
-	OUT    XLEDS       ; LED17 blinks at 2.5Hz (10Hz/4)
-	JUMP   WaitForSafety2
 	
 WaitForUser2:
 	; Wait for user to press PB2
@@ -151,21 +141,21 @@ WaitForUser2:
 	LOAD   Zero
 	OUT    XLEDS       ; clear LEDs once ready to continue
 
-	IN	   SWITCHES
-	STORE  Input
+	IN	SWITCHES
+	STORE  	Input
 	; get the absolute y value
-	AND	   LowNibl	   ; AC = y coordinate
-	STORE  y
+	AND	LowNibl	   ; AC = y coordinate
+	STORE  	y
 
 	; convert to 2's complement
-	LOAD   Input
-	AND	   Mask4
-	JZERO  skip
-	JNEG   skip
-	LOAD   Zero
-	SUB	   y
-	AND	   LowNibl
-	STORE  y
+	LOAD   	Input
+	AND	Mask4
+	JZERO  	skip
+	JNEG   	skip
+	LOAD   	Zero
+	SUB	y
+	AND	LowNibl
+	STORE  	y
 
 skip:
 	; get the absolute x value
@@ -703,7 +693,90 @@ FFFF:
 	dw &HFFFF
 
 
+;***************************************************************
+;* Square root
+;***************************************************************
+
+sqrt:
+   	STORE   N
+    	CALL    Numbits  	 
+    	SHIFT   -1
+    	STORE   B
+    	LOAD    bits 
+    	AND     One
+    	ADD     B
+    	STORE   ceilnumbits/2
+    
+    ;calculate 2^ceil(numbits(N)/2)
+    	LOAD    One
+    	STORE   x
+    	LOAD    ceilnumbits/2
+Loop1:
+    	ADDI    -1
+    	STORE   B
+    	LOAD    x
+    	SHIFT   1
+    	STORE   x
+    	LOAD    B
+    	JPOS    Loop1
+
+Loop3:
+	LOAD	N
+	STORE	num
+	LOAD	Zero
+	STORE	floorN/x
 	
+;calculate floor(N/x)
+divide:
+	LOAD	floorN/x
+	ADDI	1
+	STORE 	floorN/x
+	LOAD	num
+	SUB		x
+	STORE	num
+	JPOS	divide
+	JZERO	done
+	LOAD	floorN/x
+	ADDI	-1
+done:
+    	LOAD	floorN/x
+	ADD     x
+	SHIFT   -1
+	STORE   y	
+    	SUB     x
+    	ADDI    1
+    	JPOS    returnx
+    	LOAD    y
+    	STORE   x
+    	JUMP    Loop3
+returnx:
+    	LOAD    x
+    	RETURN
+
+
+;Finds the number of bits needed to store the integer in AC
+
+Numbits:
+    	JZERO   ItsZero
+    	SHIFT   -1
+    	STORE   A
+    	LOAD    bits
+    	ADDI    1
+    	Store   bits
+    	LOAD    A
+    	JUMP    Numbits
+ItsZero:
+    	LOAD    bits
+    	RETURN
+    
+N:		DW	0
+A:		DW	0
+B:		DW	0
+x:		DW	0
+y:		DW	0
+ceilnumbits/2:	DW	0
+floorn/x:	DW	0
+bits:		DW	0
 ;***************************************************************
 ;* Subroutines
 ;***************************************************************
@@ -1064,7 +1137,7 @@ Mask4:    DW &B00010000
 Mask5:    DW &B00100000
 Mask6:    DW &B01000000
 Mask7:    DW &B10000000
-LowByte:  DW &HFF      ; binary 00000000 1111111
+LowByte:  DW &HFF      ; 0000 0000 1111 1111
 LowNibl:  DW &HF       ; 0000 0000 0000 1111
 
 ; some useful movement values
