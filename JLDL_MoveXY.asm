@@ -70,7 +70,9 @@ WaitForUser:
 ;***************************************************************
 Main: ; "Real" program starts here.
 	OUT    RESETPOS    ; reset odometer in case wheels moved after programming
-	;CALL   InputCoord  ; Input coordinate to the robot manually
+	CALL   InputCoord  ; Input coordinate to the robot manually
+test:
+	JUMP   test
 	CALL   UARTClear   ; empty the UART receive FIFO of any old data
 	CALL   StartLog    ; enable the interrupt-based position logging
 	
@@ -165,9 +167,8 @@ WaitForUser2:
 	LOAD   Zero
 	OUT    XLEDS       ; clear LEDs once ready to continue
 
-	IN	SWITCHES
+	IN	SWITCHES	
 	STORE  	Input
-	
 	; get the absolute y value
 	AND	    MaskFive	   ; AC = y1 coordinate signed bit
 	CALL	convertTo2s	   ; AC = x1 coordinate 2's complement bit
@@ -181,9 +182,9 @@ WaitForUser2:
 	STORE	x1
 
 ; print it out
-	LOAD   x
+	LOAD   x1
 	SHIFT  8
-	OR	   y
+	OR	   y1
 	OUT	   SSEG1
 
 	RETURN
@@ -744,7 +745,7 @@ sqrtLoop1:
 
 sqrtLoop3:
 	LOAD	N
-	STORE	num
+	;STORE	num
 	LOAD	Zero
 	STORE	floorN/x
 	
@@ -753,9 +754,9 @@ divide:
 	LOAD	floorN/x
 	ADDI	1
 	STORE 	floorN/x
-	LOAD	num
+	;LOAD	num
 	SUB		x
-	STORE	num
+	;STORE	num
 	JPOS	divide
 	JZERO	done
 	LOAD	floorN/x
