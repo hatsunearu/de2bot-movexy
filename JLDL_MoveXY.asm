@@ -130,7 +130,7 @@ WaitForUser2:
 	; Wait for user to press PB2
 	IN     TIMER       ; We'll blink the LEDs above PB2
 	AND    Mask1
-	SHIFT  3           ; Both LEDG6 and LEDG7
+	SHIFT  3           ; Both LEDG4 and LEDG5
 	STORE  Temp        ; (overkill, but looks nice)
 	SHIFT  1
 	OR     Temp
@@ -143,47 +143,45 @@ WaitForUser2:
 
 	IN	SWITCHES
 	STORE  	Input
+	
 	; get the absolute y value
-	AND	LowNibl	   ; AC = y coordinate
-	STORE  	y
+	AND	    MaskFive	   ; AC = y1 coordinate signed bit
+	CALL	convertTo2s	   ; AC = x1 coordinate 2's complement bit
+	STORE	y1
 
-	; convert to 2's complement
-	LOAD   	Input
-	AND	Mask4
-	JZERO  	skip
-	JNEG   	skip
-	LOAD   	Zero
-	SUB	y
-	AND	LowNibl
-	STORE  	y
-
-skip:
 	; get the absolute x value
-	LOAD   Input
-	SHIFT  -5
-	AND	   LowNibl	   ; AC = x coordinate
-	STORE  x
+	LOAD	Input
+	SHIFT   -5
+	AND	    MaskFive			; AC = x1 coordinate signed bit
+	CALL	convertTo2s			; AC = x1 coordinate 2's complement bit
+	STORE	x1
 
-	; convert to 2's complement
-	LOAD   INPUT
-	SHIFT  -5
-	AND	   Mask4
-	JZERO  skip1
-	JNEG   skip1
-	LOAD   Zero
-	SUB	   x
-	AND	   LowNibl
-	STORE  x
-
-skip1:	
-;	print it out
+; print it out
 	LOAD   x
 	SHIFT  8
 	OR	   y
 	OUT	   SSEG1
-	
+
 	RETURN
 
+; convert from signed magnitude to 2's complement
+convertTo2s:
+	STORE	Temp		; store it at temp
+	AND		LowNibl		; get the number only
+	STORE	Temp1		;
+	LOAD	Temp		; load the signed
+	AND		Mask4		; get the sign
+	JZERO	skip
+	JNEG	skip
+	LOAD	Zero		; if negative, convert to 2s negative
+	SUB		Temp1		; 
+	AND		LowNibl		; Get only 4 bits
+	JUMP	toReturn
+skip:
+	LOAD	Temp1
+toReturn:
+	RETURN
+	
 ;***************************************************************
 ;* Move XY Subroutines
 ;***************************************************************
@@ -1105,9 +1103,25 @@ Abs_r:
 ;* Variables
 ;***************************************************************
 Temp:     DW 0 ; "Temp" is not a great name, but can be useful
+Temp1:	  DW 0 ; "Temp1"
+Temp2:	  DW 0 ; "Temp2"
 Input:	  DW 0 ; "Input" is the coordinate input from user
-x:	  DW 0 ; x coordinate
-y:	  DW 0 ; y coordinate
+x1:	  DW 0 ; x1 coordinate
+y1:	  DW 0 ; y1 coordinate
+x2:	  DW 0 ; x2 coordinate
+y2:	  DW 0 ; y2 coordinate
+x3:	  DW 0 ; x3 coordinate
+y3:	  DW 0 ; y3 coordinate
+x4:	  DW 0 ; x4 coordinate
+y4:	  DW 0 ; y4 coordinate
+x5:	  DW 0 ; x5 coordinate
+y5:	  DW 0 ; y5 coordinate
+x6:	  DW 0 ; x6 coordinate
+y6:	  DW 0 ; y6 coordinate
+x7:	  DW 0 ; x7 coordinate
+y7:	  DW 0 ; y7 coordinate
+x8:	  DW 0 ; x8 coordinate
+y8:	  DW 0 ; y8 coordinate
 
 ;***************************************************************
 ;* Constants
@@ -1139,6 +1153,7 @@ Mask6:    DW &B01000000
 Mask7:    DW &B10000000
 LowByte:  DW &HFF      ; 0000 0000 1111 1111
 LowNibl:  DW &HF       ; 0000 0000 0000 1111
+MaskFive: DW &H1F	   ; 0000 0000 0001 1111
 
 ; some useful movement values
 OneMeter: DW 961       ; ~1m in 1.05mm units
