@@ -75,6 +75,7 @@ Main: ; "Real" program starts here.
 	CALL   StartLog    ; enable the interrupt-based position logging
 	
 	loadi 90
+	store DestTheta
 	call Pivot
 	
 	load TwoFeet
@@ -82,6 +83,7 @@ Main: ; "Real" program starts here.
 	call MoveStraight
 	
 	loadi 180
+	store DestTheta
 	call Pivot
 	
 	load TwoFeet
@@ -89,6 +91,7 @@ Main: ; "Real" program starts here.
 	call MoveStraight	
 	
 	loadi 270
+	store DestTheta
 	call Pivot
 	
 	load TwoFeet
@@ -96,6 +99,7 @@ Main: ; "Real" program starts here.
 	call MoveStraight	
 	
 	loadi 0
+	store DestTheta
 	call Pivot
 	
 	load TwoFeet
@@ -189,6 +193,7 @@ toReturn:
 ; *****************************************************************************
 ; ** MoveStraight **
 ; Precondition:  DestR (input param) contains distance to travel in a straight line
+;                DestTheta (input param) contains angle (0 - 360) to head
 ; Postcondition: DE2Bot travels with specified PD control
 ; *****************************************************************************
 MoveStraight:
@@ -200,6 +205,10 @@ MoveStraight:
 	in RPOS
 	add DestR
 	store DestRight
+	
+	load DestTheta
+	call AngleSanitize
+	store ADTarget
 	
 ControlLoop:
 	out TIMER ; reset timer
@@ -229,6 +238,11 @@ UpdateErrors:
 	
 	load ErrorR
 	store ErrorRPrev   ; update previous error
+	
+	; rotation
+    call AngularDifference
+    store ErrorT   ; update pivot error
+	
 
 KpL:
 	load ErrorL
@@ -257,7 +271,15 @@ KdR:
 	loadi Kd_m
 	call MultiplySanitize
 	store CorrDerivR
-
+	
+KpT:
+	load ErrorT
+	out sseg1
+	store MSError
+	in switches
+	call MultiplySanitize
+	store CorrectionT
+	
 LoopWait:
     call AccumError
 	in TIMER
@@ -292,6 +314,11 @@ Pivot:
 
   call AngleSanitize
   store ADTarget
+  call AngularDifference
+  store PivotErrorDeriv2
+  store PivotErrorDeriv1
+  load zero
+  store CorrectionT
 
 PivotControlLoop:
 
@@ -325,7 +352,7 @@ PivotControlLoop:
   add PivotErrorDeriv2
   add PivotErrorDeriv3
   store MSError
-  in SWITCHES
+  loadi Kd_r
   call MultiplySanitize
   store CorrDerivR
 
@@ -550,6 +577,7 @@ AEPosL: ; overflow in positive direction
 	
 WriteOutL: ; write to motor
 	load AccumErrorSum
+	sub CorrectionT
 	call MotorLimit
 	out LVELCMD
 
@@ -592,6 +620,7 @@ AEPosR: ; overflow in negative direction
 	
 WriteOutR: ; write to motor
 	load AccumErrorSum
+	add CorrectionT
 	call MotorLimit
 	out RVELCMD
 	return
@@ -640,12 +669,16 @@ DW 0
 ; destination parameters
 DestR:
 DW 0
+DestTheta:
+dw 0
 
 ; current error parameters
 ErrorL:
 DW 0
 ErrorR:
 DW 0
+ErrorT:
+dw 0
 
 ; previous error parameters
 ErrorLPrev:
@@ -663,6 +696,9 @@ CorrectionL: ; correction resulting from prop term
 DW 0
 CorrectionR:
 DW 0
+CorrectionT:
+dw 0
+
 ; 
 CorrDerivL: ; correction resulting from deriv term
 dw 0
@@ -677,10 +713,12 @@ Kp_m: EQU 4 ; multiply by this number
 ; ** Kd : Derivative Control Constant
 Kd_m: EQU 16 ;
 
-; ** Angular prop control constant
-Kp_r: EQU 13
+Kp_ahc: EQU 15
 
-Kd_r: EQU 10
+; ** Angular prop control constant
+Kp_r: EQU 14
+
+Kd_r: EQU 17
 
 
 MotorTemp:
@@ -772,7 +810,7 @@ A:		DW	0
 B:		DW	0
 x:		DW	0
 y:		DW	0
-num:            dw      0
+num:    dw  0
 ceilnumbits/2:	DW	0
 floorn/x:	DW	0
 bits:		DW	0
