@@ -125,6 +125,8 @@ DEAD:      DW &HDEAD   ; Example of a "local variable"
 
 ;This is I think what our main code will look like
 
+LOADI	x1
+STORE	address
 MoveLoop:
 LOAD	address
 CALL	getRandTheta
@@ -146,7 +148,25 @@ STORE	moveCounter
 JPOS	MoveLoop
 
 moveCounter:	DW	8
-address:	DW	(address of 1st x coordinate in memory)
+address:	DW	0
+x0:	DW	0 ;never change this
+y0:	DW	0 ;never change this
+x1:	DW	3 ;these are where the coordinates go
+y1:	DW	2
+x2:	DW	-3
+y2:	DW	-2
+x3:	DW	3
+y3:	DW	-2
+x4:	DW	-6
+y4:	DW	-1
+x5:	DW	-5
+y5:	DW	-1
+x6:	DW	-5
+y6:	DW	3
+x7:	DW	0
+y7:	DW	3
+x8:	DW	0
+y8:	DW	0
 ;***************************************************************
 ;* Input Coordinate, store to "Input" variable
 ;***************************************************************
