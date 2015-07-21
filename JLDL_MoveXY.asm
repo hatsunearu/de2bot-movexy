@@ -877,11 +877,15 @@ ADDI	2
 STORE	yn
 
 ;get displacements and load them into AtanX and AtanY
-LOAD	xn
-SUB		xn-1
+ILOAD	xn-1
 STORE	AtanX
-LOAD	yn
-SUB		yn-1
+ILOAD	xn
+SUB	AtanX
+STORE	AtanX
+ILOAD	yn-1
+STORE	AtanY
+ILOAD	yn
+SUB	AtanY
 STORE	AtanY
 CALL	Atan2
 STORE	DestTheta
