@@ -772,6 +772,7 @@ A:		DW	0
 B:		DW	0
 x:		DW	0
 y:		DW	0
+num:            dw      0
 ceilnumbits/2:	DW	0
 floorn/x:	DW	0
 bits:		DW	0
