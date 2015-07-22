@@ -70,43 +70,70 @@ WaitForUser:
 ;***************************************************************
 Main: ; "Real" program starts here.
 	OUT    RESETPOS    ; reset odometer in case wheels moved after programming
-	CALL   InputCoord  ; Input coordinate to the robot manually
-test:
-	JUMP   test
+	;CALL   InputCoord  ; Input coordinate to the robot manually
+
 	CALL   UARTClear   ; empty the UART receive FIFO of any old data
 	CALL   StartLog    ; enable the interrupt-based position logging
 	
-	loadi 90
-	store DestTheta
-	call Pivot
+	LOADI	x1
+	STORE	address
+	MoveLoop:
 	
-	load TwoFeet
-	store DestR
-	call MoveStraight
 	
-	loadi 180
-	store DestTheta
-	call Pivot
 	
-	load TwoFeet
-	store DestR
-	call MoveStraight	
+	LOAD	address
+	CALL	getRandTheta
 	
-	loadi 270
-	store DestTheta
-	call Pivot
+
+	LOAD	destTheta
+	CALL	Pivot
+
+	LOAD	destR
+	CALL	moveStraight
+
+
+	LOAD	address
+	ADDI	2
+	STORE	address
+
+	LOAD	moveCounter
+	ADDI	-1
+	STORE	moveCounter
+
+	JPOS	MoveLoop
+
 	
-	load TwoFeet
-	store DestR
-	call MoveStraight	
+	; loadi 90
+	; store DestTheta
+	; call Pivot
 	
-	loadi 0
-	store DestTheta
-	call Pivot
+	; load TwoFeet
+	; store DestR
+	; call MoveStraight
 	
-	load TwoFeet
-	store DestR
-	call MoveStraight
+	; loadi 180
+	; store DestTheta
+	; call Pivot
+	
+	; load TwoFeet
+	; store DestR
+	; call MoveStraight	
+	
+	; loadi 270
+	; store DestTheta
+	; call Pivot
+	
+	; load TwoFeet
+	; store DestR
+	; call MoveStraight	
+	
+	; loadi 0
+	; store DestTheta
+	; call Pivot
+	
+	; load TwoFeet
+	; store DestR
+	; call MoveStraight
 
 Die:
 ; Sometimes it's useful to permanently stop execution.
@@ -124,28 +151,6 @@ Forever:
 DEAD:      DW &HDEAD   ; Example of a "local variable"
 
 ;This is I think what our main code will look like
-
-LOADI	x1
-STORE	address
-MoveLoop:
-LOAD	address
-CALL	getRandTheta
-
-LOAD	destTheta
-CALL	Pivot
-
-LOAD	destR
-CALL	moveStraight
-
-LOAD	address
-ADDI	2
-STORE	address
-
-LOAD	moveCounter
-ADDI	-1
-STORE	moveCounter
-
-JPOS	MoveLoop
 
 moveCounter:	DW	8
 address:	DW	0
@@ -779,7 +784,11 @@ FFFF:
 ;***************************************************************
 
 sqrt:
+
    	STORE   N
+	LOAD	Zero
+	STORE	bits
+	LOAD	N
     	CALL    Numbits  	 
     	SHIFT   -1
     	STORE   B
@@ -803,7 +812,7 @@ sqrtLoop1:
 
 sqrtLoop3:
 	LOAD	N
-	;STORE	num
+	STORE	num
 	LOAD	Zero
 	STORE	floorN/x
 	
@@ -812,9 +821,9 @@ divide:
 	LOAD	floorN/x
 	ADDI	1
 	STORE 	floorN/x
-	;LOAD	num
+	LOAD	num
 	SUB		x
-	;STORE	num
+	STORE	num
 	JPOS	divide
 	JZERO	done
 	LOAD	floorN/x
@@ -890,6 +899,8 @@ STORE	AtanY
 CALL	Atan2
 STORE	DestTheta
 
+
+	
 ;theta has been stored, now calculate distance
 LOAD	AtanX
 STORE	m16sA
@@ -905,19 +916,24 @@ LOAD	mres16sL
 ADD		AtanX
 SHIFT	8
 CALL	sqrt
+
+
+
+
 ;now we need to convert 1/16' into encoder ticks by multiplying by 18+5/16
 STORE	m16sA
 LOADI	18
 STORE	m16sB
 CALL	Mult16s
+LOAD	mres16sL
 STORE	DestR
 LOADI	5
 STORE	m16sB
 CALL	Mult16s
+LOAD	mres16sL
 SHIFT	-4
 ADD		DestR
 STORE	DestR
-
 RETURN
 
 xn:		DW	0
@@ -1393,22 +1409,6 @@ Temp:     DW 0 ; "Temp" is not a great name, but can be useful
 Temp1:	  DW 0 ; "Temp1"
 Temp2:	  DW 0 ; "Temp2"
 Input:	  DW 0 ; "Input" is the coordinate input from user
-x1:	  DW 0 ; x1 coordinate
-y1:	  DW 0 ; y1 coordinate
-x2:	  DW 0 ; x2 coordinate
-y2:	  DW 0 ; y2 coordinate
-x3:	  DW 0 ; x3 coordinate
-y3:	  DW 0 ; y3 coordinate
-x4:	  DW 0 ; x4 coordinate
-y4:	  DW 0 ; y4 coordinate
-x5:	  DW 0 ; x5 coordinate
-y5:	  DW 0 ; y5 coordinate
-x6:	  DW 0 ; x6 coordinate
-y6:	  DW 0 ; y6 coordinate
-x7:	  DW 0 ; x7 coordinate
-y7:	  DW 0 ; y7 coordinate
-x8:	  DW 0 ; x8 coordinate
-y8:	  DW 0 ; y8 coordinate
 
 ;***************************************************************
 ;* Constants
