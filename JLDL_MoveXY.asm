@@ -422,8 +422,9 @@ LoopWaitPivot:
   jneg LoopWaitPivot
   
   load PivotError
+  call Abs
+  addi -1
   jpos PivotControlLoop
-  jneg PivotControlLoop
   call DeadCheck
   jzero PivotControlLoop
   return
