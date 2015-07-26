@@ -2,8 +2,8 @@
 ; Created by Kevin Johnson
 ; Modified by John Braatz, Laura Palmore, Don Gi Min, and Lovissa Winyoto
 ; (no copyright applied; edit freely, no attribution necessary)
-; This program does basic initialization of the DE2Bot
-; and includes subroutines for position logging.
+; This program does implements an arbituary movement
+; subroutine and supporting programs for the ECE 2031 class.
 
 ; Section labels are for clarity only.
 
